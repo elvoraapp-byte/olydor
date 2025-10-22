@@ -1,18 +1,11 @@
-const express = require('express');
-const cors = require('cors');
+import express from 'express';
+import cors from 'cors';
 
 const app = express();
-
-// CORS - Autorise tout
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
-}));
-
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// ✅ ROUTE RACINE CRITIQUE
+// ✅ ROUTE RACINE
 app.get('/', (req, res) => {
   res.json({ 
     message: '🚀 Serveur Olynor Opérationnel!',
@@ -112,7 +105,6 @@ app.post('/api/generate-menu', (req, res) => {
   });
 });
 
-// ✅ PORT CRITIQUE POUR RENDER
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎉 SERVEUR DÉMARRÉ SUR LE PORT ${PORT}`);
