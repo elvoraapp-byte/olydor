@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu AR</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+      min-height: 100vh;
+    }
+    model-viewer {
+      width: 100%;
+      height: 300px;
+      border-radius: 16px;
+      background: #f8fafc;
+    }
+  </style>
+</head>
+<body class="p-5">
+  
+  <div class="max-w-6xl mx-auto">
+    <!-- HEADER -->
+    <div class="bg-white rounded-2xl p-6 mb-6 text-center shadow-xl">
+      <h1 id="restaurantName" class="text-3xl font-bold text-blue-600 mb-2">Menu</h1>
+      <p class="text-gray-600">Découvrez nos plats en réalité augmentée</p>
+    </div>
+
+    <!-- PLATS -->
+    <div id="dishesGrid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Les plats seront chargés ici -->
+    </div>
+
+    <!-- EMPTY STATE -->
+    <div id="emptyState" class="hidden bg-white rounded-2xl p-12 text-center">
+      <div class="text-6xl mb-4">🍽️</div>
+      <h2 class="text-2xl font-bold mb-2">Aucun plat disponible</h2>
+      <p class="text-gray-600">Le restaurant n'a pas encore configuré son menu.</p>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = window.location.origin;
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user');
+
+    async function loadMenu() {
+      if (!userId) {
+        showEmptyState();
+        return;
+      }
+
+      try {
+        // Charger les infos du restaurant
+        const userRes = await fetch(`${API_URL}/api/user/${userId}`);
+        const userData = await userRes.json();
+        
+        if (userData.success && userData.user) {
+          document.getElementById('restaurantName').textContent = userData.user.restaurant || 'Menu';
+        }
+
+        // Charger les plats
+        const dishesRes = await fetch(`${API_URL}/api/dishes/${userId}`);
+        const dishesData = await dishesRes.json();
+        
+        if (dishesData.success && dishesData.dishes) {
+          const activeDishes = dishesData.dishes.filter(d => d.selected && d.status3D === 'ready' && d.modelUrl);
+          
+          if (activeDishes.length === 0) {
+            showEmptyState();
+            return;
+          }
+
+          renderDishes(activeDishes);
+        } else {
+          showEmptyState();
+        }
+      } catch (error) {
+        console.error('Erreur:', error);
+        showEmptyState();
+      }
+    }
+
+    function renderDishes(dishes) {
+      const grid = document.getElementById('dishesGrid');
+      grid.innerHTML = dishes.map(dish => `
+        <div class="bg-white rounded-2xl overflow-hidden shadow-xl">
+          <div class="p-6">
+            <h3 class="text-2xl font-bold mb-2">${escapeHtml(dish.name)}</h3>
+            <p class="text-blue-600 text-xl font-bold mb-3">${dish.price}€</p>
+            ${dish.description ? `<p class="text-gray-600 mb-4">${escapeHtml(dish.description)}</p>` : ''}
+          </div>
+
+          <model-viewer 
+            src="${dish.modelUrl}"
+            alt="${escapeHtml(dish.name)}"
+            ar
+            ar-modes="webxr scene-viewer quick-look"
+            camera-controls
+            auto-rotate
+            environment-image="neutral"
+            shadow-intensity="1">
+          </model-viewer>
+
+          <div class="p-4 bg-blue-50 text-center text-sm text-blue-800">
+            📱 Sur mobile : Cliquez sur l'icône AR pour voir en réalité augmentée
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('emptyState').classList.add('hidden');
+    }
+
+    function showEmptyState() {
+      document.getElementById('dishesGrid').classList.add('hidden');
+      document.getElementById('emptyState').classList.remove('hidden');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Charger le menu au démarrage
+    loadMenu();
+  </script>
+</body>
+</html>

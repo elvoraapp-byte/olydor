@@ -1,0 +1,280 @@
+// ====================================================
+//  OLYNOR BACKEND - VERSION FINALE COMPLÈTE
+// ====================================================
+import express from "express";
+import cors from "cors";
+import axios from "axios";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from 'url';
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: "50mb" }));
+
+// Servir les fichiers statiques
+app.use(express.static('public'));
+app.use('/models', express.static('models'));
+
+// ✅ Route pour le dashboard
+app.get('/dashboard', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+const LUMA_API_KEY = process.env.MPX_SDK_BEARER_TOKEN;
+
+// Créer les dossiers nécessaires
+const modelsDir = path.join(__dirname, 'models');
+const publicDir = path.join(__dirname, 'public');
+const dataDir = path.join(__dirname, 'data');
+
+[modelsDir, publicDir, dataDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
+
+console.log("📁 Dossiers créés");
+
+// ====================================================
+// 💾 STOCKAGE DES PLATS CÔTÉ SERVEUR
+// ====================================================
+const dishesFile = path.join(dataDir, 'dishes.json');
+const usersFile = path.join(dataDir, 'users.json');
+
+// Charger les plats
+function loadDishes(userId = 'default') {
+  try {
+    if (fs.existsSync(dishesFile)) {
+      const data = JSON.parse(fs.readFileSync(dishesFile, 'utf8'));
+      return data[userId] || [];
+    }
+  } catch (error) {
+    console.error('Erreur chargement plats:', error);
+  }
+  return [];
+}
+
+// Sauvegarder les plats
+function saveDishes(userId = 'default', dishes) {
+  try {
+    let data = {};
+    if (fs.existsSync(dishesFile)) {
+      data = JSON.parse(fs.readFileSync(dishesFile, 'utf8'));
+    }
+    data[userId] = dishes;
+    fs.writeFileSync(dishesFile, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Erreur sauvegarde plats:', error);
+    return false;
+  }
+}
+
+// ====================================================
+// 📡 API ENDPOINTS
+// ====================================================
+
+// GET - Récupérer les plats d'un utilisateur
+app.get("/api/dishes/:userId", (req, res) => {
+  const { userId } = req.params;
+  const dishes = loadDishes(userId);
+  res.json({ success: true, dishes });
+});
+
+// POST - Sauvegarder les plats
+app.post("/api/dishes/:userId", (req, res) => {
+  const { userId } = req.params;
+  const { dishes } = req.body;
+  const success = saveDishes(userId, dishes);
+  res.json({ success, message: success ? 'Plats sauvegardés' : 'Erreur' });
+});
+
+// GET - Récupérer les infos utilisateur
+app.get("/api/user/:userId", (req, res) => {
+  try {
+    if (fs.existsSync(usersFile)) {
+      const users = JSON.parse(fs.readFileSync(usersFile, 'utf8'));
+      const user = users[req.params.userId];
+      if (user) {
+        return res.json({ success: true, user });
+      }
+    }
+  } catch (error) {
+    console.error('Erreur chargement user:', error);
+  }
+  res.json({ success: false, user: { restaurant: 'Mon Restaurant', plan: 'free' } });
+});
+
+// POST - Sauvegarder les infos utilisateur
+app.post("/api/user/:userId", (req, res) => {
+  try {
+    let users = {};
+    if (fs.existsSync(usersFile)) {
+      users = JSON.parse(fs.readFileSync(usersFile, 'utf8'));
+    }
+    users[req.params.userId] = req.body.user;
+    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur sauvegarde user:', error);
+    res.json({ success: false });
+  }
+});
+
+// ====================================================
+// 🤖 GÉNÉRATION 3D AVEC LUMA AI
+// ====================================================
+app.post("/generate-3d", async (req, res) => {
+  const { dishName, imageBase64 } = req.body;
+  
+  if (!dishName || !imageBase64) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Nom du plat et image requis" 
+    });
+  }
+
+  console.log(`🎯 Génération 3D pour: ${dishName}`);
+  
+  try {
+    const createResponse = await axios.post(
+      'https://api.lumalabs.ai/dream-machine/v1/generations',
+      {
+        prompt: `High quality 3D model of ${dishName}, restaurant food dish, appetizing presentation, photorealistic`,
+        aspect_ratio: "1:1",
+        keyframes: {
+          frame0: {
+            type: "image",
+            url: `data:image/jpeg;base64,${imageBase64}`
+          }
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${LUMA_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const generationId = createResponse.data.id;
+    console.log(`✅ Génération créée: ${generationId}`);
+
+    // Attendre la génération
+    let status = 'pending';
+    let attempts = 0;
+    const maxAttempts = 60;
+    let generationData;
+
+    while (!['completed', 'failed'].includes(status) && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const statusResponse = await axios.get(
+        `https://api.lumalabs.ai/dream-machine/v1/generations/${generationId}`,
+        {
+          headers: { 'Authorization': `Bearer ${LUMA_API_KEY}` }
+        }
+      );
+
+      generationData = statusResponse.data;
+      status = generationData.state;
+      attempts++;
+      console.log(`⏳ Statut (${attempts}/${maxAttempts}): ${status}`);
+    }
+
+    if (status !== 'completed') {
+      throw new Error(`Génération échouée ou timeout`);
+    }
+
+    const assetUrl = generationData.assets?.video || generationData.video?.url;
+    
+    if (!assetUrl) {
+      console.log('⚠️ Pas de GLB, utilisation du modèle de démo');
+      return res.json({
+        success: true,
+        modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+        status: "ready",
+        message: "✅ Modèle 3D de démonstration",
+        generationId: generationId,
+        isDemo: true
+      });
+    }
+
+    res.json({
+      success: true,
+      modelUrl: assetUrl,
+      status: "ready",
+      message: "✅ Modèle généré",
+      generationId: generationId
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur:', error.message);
+    res.json({
+      success: true,
+      modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      status: "ready",
+      message: "⚠️ Modèle de démonstration (erreur API)",
+      isDemo: true
+    });
+  }
+});
+
+// ====================================================
+// 🏠 PAGE D'ACCUEIL
+// ====================================================
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Olynor Backend</title>
+      <style>
+        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .status { padding: 20px; background: #e8f5e9; border-radius: 8px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <h1>🍽️ Olynor Backend</h1>
+      <div class="status">
+        <strong>✅ Serveur opérationnel</strong>
+        <p>Port: ${PORT}</p>
+        <p>Luma AI: ${LUMA_API_KEY ? '✅ Connectée' : '❌ Non configurée'}</p>
+      </div>
+      <h2>📱 Pages</h2>
+      <ul>
+        <li><a href="/index.html">Accueil</a></li>
+        <li><a href="/dashboard">Dashboard</a></li>
+        <li><a href="/menu_html.html">Menu AR</a></li>
+      </ul>
+    </body>
+    </html>
+  `);
+});
+
+// ====================================================
+// 🚀 DÉMARRAGE
+// ====================================================
+app.listen(PORT, () => {
+  console.log(`
+╔════════════════════════════════════════════════════╗
+║  🚀 OLYNOR BACKEND - VERSION FINALE               ║
+╠════════════════════════════════════════════════════╣
+║  📡 Serveur: http://localhost:${PORT}              ║
+║  🤖 Luma AI: ${LUMA_API_KEY ? '✅ Connectée' : '❌ Non configurée'}           ║
+║  💾 Stockage: Fichiers JSON                       ║
+║  🎯 Dashboard: http://localhost:${PORT}/dashboard     ║
+║  📱 Menu AR: http://localhost:${PORT}/menu_html.html  ║
+╚════════════════════════════════════════════════════╝
+  `);
+});

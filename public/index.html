@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Olynor – Menus 3D/AR pour restaurants</title>
+  <meta name="description" content="Olynor: menu 3D/AR via QR code. Augmentez vos ventes, réduisez les retours et suivez vos statistiques."/>
+  <link rel="icon" href="favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- ✅ FIREBASE POUR AUTHENTIFICATION -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  
+  <style>
+    html,body{font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif}
+    .grad{background-image:linear-gradient(90deg,#60a5fa,#2563eb)}
+    .text-grad{background-image:linear-gradient(90deg,#60a5fa,#2563eb);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:1rem}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:60}
+    .modal.active{display:flex}
+    .chip{border:1px solid #bfdbfe;background:#eff6ff}
+    .fade{opacity:0;transform:translateY(10px);transition:.5s}
+    .fade.show{opacity:1;transform:none}
+    .qr-cta:hover{transform:scale(1.03)}
+    
+    /* Styles Chatbot */
+    .chatbot-msg { max-width: 80%; margin: 8px 0; padding: 12px; border-radius: 18px; animation: fadeIn 0.3s }
+    .user-msg { background: #2563eb; color: white; margin-left: auto; border-bottom-right-radius: 4px }
+    .bot-msg { background: #f1f5f9; color: #334155; margin-right: auto; border-bottom-left-radius: 4px }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .chat-typing { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #64748b; animation: typing 1.4s infinite }
+    @keyframes typing { 0%, 60%, 100% { transform: scale(1); opacity: 0.5; } 30% { transform: scale(1.2); opacity: 1; } }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-white text-slate-800">
+  
+  <header class="sticky top-0 z-50 bg-white/85 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-5 py-5 flex items-center justify-between">
+      <a href="#home" class="flex items-center gap-3">
+        <div class="w-10 h-10 grad rounded-xl flex items-center justify-center text-white font-bold">O</div>
+        <span class="font-extrabold text-xl text-slate-900">Olynor</span>
+      </a>
+      <nav class="hidden md:flex items-center gap-8 text-base font-medium">
+        <a href="#how" class="hover:text-slate-900 text-slate-600">Comment ça marche ?</a>
+        <a href="#pricing" class="hover:text-slate-900 text-slate-600">Tarifs</a>
+        <a href="#faq" class="hover:text-slate-900 text-slate-600">FAQ</a>
+        <a href="#contact" class="hover:text-slate-900 text-slate-600">Contact</a>
+      </nav>
+      <div class="flex items-center gap-3">
+        <button id="btnLogin" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Connexion</button>
+        <button id="btnSignup" class="px-4 py-2 rounded-lg grad text-white">Inscription</button>
+      </div>
+    </div>
+  </header>
+
+  <section id="home" class="relative overflow-hidden">
+    <div class="max-w-7xl mx-auto px-5 pt-14 pb-10 grid md:grid-cols-2 gap-10 items-center">
+      <div class="fade">
+        <div class="inline-flex items-center gap-2 text-xs chip px-2 py-1 rounded-full mb-4 text-slate-700">
+          <span>✨ Nouveau</span><span class="text-slate-400">•</span><span>Menu 3D & AR sans application</span>
+        </div>
+        <h1 class="text-4xl md:text-6xl font-extrabold leading-tight text-slate-900">
+          Faites vivre vos plats en <span class="text-grad">3D</span>.<br/>Vendez avant la première bouchée.
+        </h1>
+        <p class="mt-5 text-lg text-slate-600">
+          Olynor transforme votre carte en expérience interactive : vos clients scannent un QR code, explorent vos plats en 3D/AR et commandent en toute confiance.
+          Résultat : plus de ventes, moins de retours.
+        </p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href="#pricing" onclick="goFree(); return false;" class="px-5 py-3 grad text-white rounded-xl">Commencer gratuitement</a>
+        </div>
+      </div>
+      <div class="relative fade">
+        <img src="https://i.imgur.com/tMz5H4j.jpeg" alt="Scan 3D d'un plat dans un restaurant" class="w-full h-auto rounded-3xl shadow-2xl object-cover"/>
+        <div class="absolute -bottom-5 -right-5 bg-white/90 backdrop-blur border border-slate-200 rounded-2xl p-4 shadow">
+          <div class="text-xs text-slate-500">Exemple</div>
+          <div class="font-semibold">Scan QR → Plat en 3D</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" class="py-16 bg-gradient-to-b from-white to-slate-100 fade">
+    <div class="max-w-7xl mx-auto px-5">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900">Comment ça marche ?</h2>
+      <div class="mt-8 grid md:grid-cols-2 gap-8 items-center">
+        <div class="card p-6">
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <div class="w-10 h-10 grad rounded-lg text-white flex items-center justify-center font-bold">1</div>
+              <h3 class="font-bold mt-3">Générez votre QR</h3>
+              <p class="text-sm text-slate-600 mt-2">Un QR code unique, prêt à imprimer/partager.</p>
+            </div>
+            <div>
+              <div class="w-10 h-10 grad rounded-lg text-white flex items-center justify-center font-bold">2</div>
+              <h3 class="font-bold mt-3">Vos plats en 3D</h3>
+              <p class="text-sm text-slate-600 mt-2">Photos & modèles 3D à l'échelle.</p>
+            </div>
+            <div>
+              <div class="w-10 h-10 grad rounded-lg text-white flex items-center justify-center font-bold">3</div>
+              <h3 class="font-bold mt-3">Suivez les résultats</h3>
+              <p class="text-sm text-slate-600 mt-2">Courbe hebdo, top 3, export CSV (Premium).</p>
+            </div>
+          </div>
+        </div>
+        <div class="text-center">
+          <a href="https://www.instagram.com/olynorapp/" target="_blank" class="inline-block transform transition qr-cta" title="Suivez-nous sur Instagram">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://www.instagram.com/olynorapp/" alt="QRCode Instagram" class="mx-auto rounded-xl border shadow"/>
+          </a>
+          <p class="text-sm text-slate-600 mt-3">Scannez pour découvrir notre Instagram</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="py-16 bg-white fade">
+    <div class="max-w-7xl mx-auto px-5">
+      <div class="text-center max-w-3xl mx-auto">
+        <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900">Tarifs simples et transparents</h2>
+        <p class="mt-3 text-slate-600">Paiement 100% sécurisé via Stripe. Connexion requise avant l'achat.</p>
+      </div>
+      <div class="mt-10 grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        <div class="card p-8">
+          <h3 class="text-xl font-bold">Gratuit</h3>
+          <div class="text-4xl font-extrabold mt-2">0€</div>
+          <p class="text-slate-500">par mois</p>
+          <ul class="mt-5 space-y-2 text-sm">
+            <li>• Jusqu'à 3 plats</li>
+            <li>• QR code global</li>
+            <li>• Sans carte bancaire</li>
+            <li>• Pas de statistiques</li>
+          </ul>
+          <button class="mt-6 w-full px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50" onclick="ensureAccount('free')">Commencer</button>
+        </div>
+        <div class="card p-8 border-2 border-blue-500 relative">
+          <span class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs bg-blue-600 text-white px-3 py-1 rounded-full">Populaire</span>
+          <h3 class="text-xl font-bold">Pro</h3>
+          <div class="text-4xl font-extrabold mt-2">49€</div>
+          <p class="text-slate-500">par mois</p>
+          <ul class="mt-5 space-y-2 text-sm">
+            <li>• Jusqu'à 20 plats maximum</li>
+            <li>• QR code global & partage en ligne</li>
+            <li>• Statistiques basiques</li>
+            <li>• Support email</li>
+          </ul>
+          <button class="mt-6 w-full px-4 py-2 rounded-lg grad text-white" onclick="buyPlan('pro')">Choisir Pro</button>
+        </div>
+        <div class="card p-8">
+          <h3 class="text-xl font-bold">Premium</h3>
+          <div class="text-4xl font-extrabold mt-2">99€</div>
+          <p class="text-slate-500">par mois</p>
+          <ul class="mt-5 space-y-2 text-sm">
+            <li>• Plats illimités</li>
+            <li>• QR code global & partage en ligne</li>
+            <li>• Statistiques avancées (courbe 7 jours, top 3, export CSV)</li>
+            <li>• A/B test visuels</li>
+            <li>• Support prioritaire</li>
+          </ul>
+          <button class="mt-6 w-full px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50" onclick="buyPlan('premium')">Choisir Premium</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="py-16 bg-white fade">
+    <div class="max-w-7xl mx-auto px-5">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900">FAQ</h2>
+      <div class="mt-8 grid md:grid-cols-2 gap-6">
+        <div class="card p-6">
+          <h3 class="font-bold">À quoi ça sert concrètement ?</h3>
+          <p class="mt-2 text-sm text-slate-700">Olynor aide vos clients à visualiser précisément ce qu'ils vont recevoir avant de commander. Résultat : ils commandent en confiance, vous réduisez les retours et les insatisfactions, et vous augmentez votre chiffre d'affaires grâce à des décisions d'achat plus rapides et sûres.</p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold">Différence Pro vs Premium ?</h3>
+          <div class="mt-2 text-sm text-slate-700 space-y-2">
+            <p><strong>Pro (49€/mois)</strong> : jusqu'à 20 plats, QR code global, statistiques basiques (total de scans, scans/semaine), support email.</p>
+            <p><strong>Premium (99€/mois)</strong> : plats illimités, statistiques avancées (courbe 7 jours, top 3 plats, export CSV), A/B test des visuels, support prioritaire.</p>
+          </div>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold">Le client voit-il vraiment le plat "en vrai" ?</h3>
+          <p class="mt-2 text-sm text-slate-700">Oui. Grâce à la 3D et à l'AR, il peut visualiser la portion à l'échelle sur sa table (mobile compatible). Aucun téléchargement d'application n'est nécessaire.</p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold">Puis-je partager le menu en ligne ?</h3>
+          <p class="mt-2 text-sm text-slate-700">Oui. Le QR code pointe vers une URL publique de votre menu. Vous pouvez l'intégrer sur votre site ou réseaux sociaux.</p>
+        </div>
+        <div class="card p-6">
+          <h3 class="font-bold">Avez-vous une offre gratuite ?</h3>
+          <p class="mt-2 text-sm text-slate-700">Oui, pour tester : 3 plats, QR code global, pas de CB ni de statistiques.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" class="py-16 bg-gradient-to-b from-white to-slate-100 fade">
+    <div class="max-w-3xl mx-auto px-5">
+      <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 text-center">Contactez-nous</h2>
+      <p class="text-center text-slate-600 mt-2">Écrivez-nous à <a class="underline text-blue-600" href="mailto:Elvoraapp@gmail.com">Elvoraapp@gmail.com</a></p>
+    </div>
+  </section>
+
+  <footer class="bg-slate-900 text-slate-200">
+    <div class="max-w-7xl mx-auto px-5 py-12 grid md:grid-cols-4 gap-8">
+      <div>
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 grad rounded-lg text-white flex items-center justify-center font-bold">O</div>
+          <div class="font-extrabold text-lg">Olynor</div>
+        </div>
+        <p class="text-slate-400 mt-3 text-sm">Menus 3D & AR pour restaurants. Scannez, visualisez, commandez.</p>
+        <div class="mt-4">
+          <a href="https://www.instagram.com/olynorapp/" target="_blank" class="inline-flex items-center gap-2 text-slate-300 hover:text-white transition">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 015.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63zm-.081 1.802h-.468c-2.456 0-2.784.011-3.807.058-.975.045-1.504.207-1.857.344-.467.182-.8.398-1.15.748-.35.35-.566.683-.748 1.15-.137.353-.3.882-.344 1.857-.047 1.023-.058 1.351-.058 3.807v.468c0 2.456.011 2.784.058 3.807.045.975.207 1.504.344 1.857.182.466.399.8.748 1.15.35.35.683.566 1.15.748.353.137.882.3 1.857.344 1.054.048 1.37.058 4.041.058h.08c2.597 0 2.917-.01 3.96-.058.976-.045 1.505-.207 1.858-.344.466-.182.8-.398 1.15-.748.35-.35.566-.683.748-1.15.137-.353.3-.882.344-1.857.048-1.055.058-1.37.058-4.041v-.08c0-2.597-.01-2.917-.058-3.96-.045-.976-.207-1.505-.344-1.858a3.097 3.097 0 00-.748-1.15 3.098 3.098 0 00-1.15-.748c-.353-.137-.882-.3-1.857-.344-1.023-.047-1.351-.058-3.807-.058zM12 6.865a5.135 5.135 0 110 10.27 5.135 5.135 0 010-10.27zm0 1.802a3.333 3.333 0 100 6.666 3.333 3.333 0 000-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z" clip-rule="evenodd"/></svg>
+            <span class="text-sm">@olynorapp</span>
+          </a>
+        </div>
+      </div>
+      <div>
+        <div class="font-bold">Navigation</div>
+        <ul class="mt-3 space-y-2 text-sm text-slate-300">
+          <li><a href="#how" class="hover:underline">Comment ça marche ?</a></li>
+          <li><a href="#pricing" class="hover:underline">Tarifs</a></li>
+          <li><a href="#faq" class="hover:underline">FAQ</a></li>
+          <li><a href="#contact" class="hover:underline">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="font-bold">Légal</div>
+        <ul class="mt-3 space-y-2 text-sm text-slate-300">
+          <li><a href="cgu.html" class="hover:underline">CGU</a></li>
+          <li><a href="confidentialite.html" class="hover:underline">Politique de confidentialité</a></li>
+          <li><a href="mentions-legales.html" class="hover:underline">Mentions légales</a></li>
+          <li><a href="cookies.html" class="hover:underline">Cookies</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="font-bold">Nous écrire</div>
+        <p class="text-sm text-slate-300 mt-3"><a class="hover:underline" href="mailto:Elvoraapp@gmail.com">Elvoraapp@gmail.com</a></p>
+      </div>
+    </div>
+    <div class="border-t border-slate-700"></div>
+    <div class="max-w-7xl mx-auto px-5 py-6 text-xs text-slate-400">© <span id="y"></span> Olynor – Tous droits réservés.</div>
+  </footer>
+
+  <!-- Modal Authentification -->
+  <div id="authModal" class="modal">
+    <div class="bg-white rounded-2xl max-w-md w-full mx-4 p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="authTitle" class="text-lg font-bold">Connexion</h3>
+        <button onclick="toggleAuth(false)" class="text-2xl text-slate-400 hover:text-slate-600">×</button>
+      </div>
+      <form id="authForm" class="space-y-3">
+        <div id="signupFields" class="space-y-3">
+          <input id="authRestaurant" placeholder="Nom du restaurant" class="w-full px-4 py-3 border rounded-lg"/>
+          <div class="grid grid-cols-2 gap-3">
+            <input id="authFirstName" placeholder="Prénom" class="w-full px-4 py-3 border rounded-lg"/>
+            <input id="authLastName" placeholder="Nom" class="w-full px-4 py-3 border rounded-lg"/>
+          </div>
+          <input id="authSIRET" placeholder="Numéro de SIRET (14 chiffres)" maxlength="14" class="w-full px-4 py-3 border rounded-lg"/>
+          <input id="authPhone" type="tel" placeholder="Téléphone" class="w-full px-4 py-3 border rounded-lg"/>
+        </div>
+        <input id="authEmail" type="email" placeholder="Email" required class="w-full px-4 py-3 border rounded-lg"/>
+        <input id="authPass" type="password" placeholder="Mot de passe" required class="w-full px-4 py-3 border rounded-lg"/>
+        
+        <!-- ✅ MOT DE PASSE OUBLIÉ -->
+        <div id="forgotPasswordLink" class="text-right hidden">
+          <a href="#" onclick="openForgotPassword(); return false;" class="text-sm text-blue-600 hover:underline">Mot de passe oublié ?</a>
+        </div>
+        
+        <button type="submit" class="w-full px-4 py-3 grad text-white rounded-lg font-semibold" id="authSubmitBtn">
+          <span id="authSubmitText">Valider</span>
+          <span id="authSubmitLoader" class="hidden">⏳ Chargement...</span>
+        </button>
+        <div class="text-sm text-slate-600 text-center"><span id="authSwitch"></span></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 🤖 CHATBOT OLYNOR -->
+  <div id="chatbot-widget" class="fixed bottom-6 right-6 z-50">
+    <!-- Bouton d'ouverture -->
+    <button onclick="toggleChat()" class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110">
+      <span id="chat-icon">💬</span>
+    </button>
+    
+    <!-- Fenêtre de chat -->
+    <div id="chat-window" class="hidden bg-white border border-slate-200 rounded-2xl shadow-2xl w-80 h-96 mt-2 flex flex-col">
+      <!-- En-tête -->
+      <div class="p-4 border-b bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-t-2xl">
+        <div class="flex items-center justify-between">
+          <h3 class="font-bold">🤖 Assistant Olynor</h3>
+          <button onclick="toggleChat()" class="text-white hover:text-slate-200">×</button>
+        </div>
+        <p class="text-xs opacity-90 mt-1">Je suis là pour vous aider !</p>
+      </div>
+      
+      <!-- Messages -->
+      <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3">
+        <div class="bot-msg chatbot-msg">
+          Bonjour ! 👋 Je suis l'assistant Olynor. Comment puis-je vous aider ?
+        </div>
+      </div>
+      
+      <!-- Input -->
+      <div class="p-4 border-t bg-slate-50 rounded-b-2xl">
+        <div class="flex gap-2">
+          <input type="text" id="chat-input" placeholder="Tapez votre question..." 
+                 class="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                 onkeypress="handleChatInput(event)">
+          <button onclick="sendMessage()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">
+            ↵
+          </button>
+        </div>
+        <div class="text-xs text-slate-500 mt-2 text-center">
+          Questions fréquentes disponibles
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ✅ CONFIGURATION FIREBASE
+    const firebaseConfig = {
+      apiKey: "AIzaSyAq42jtwJp-kx8plMZMOxy4cITe58hvWyg",
+      authDomain: "elvoraapp-ae039.firebaseapp.com",
+      projectId: "elvoraapp-ae039",
+      storageBucket: "elvoraapp-ae039.firebasestorage.app",
+      messagingSenderId: "1017273679491",
+      appId: "1:1017273679491:web:c5a4de54ad2d3f67a025b6",
+      measurementId: "G-H930RYEXBG"
+    };
+
+    // Initialiser Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // Configuration API Backend
+    const API_URL = 'https://olydor.onrender.com/api';
+
+    document.getElementById('y').textContent = new Date().getFullYear();
+    
+    // Animations au scroll
+    const onScroll = () => {
+      document.querySelectorAll('.fade').forEach(el => {
+        const r = el.getBoundingClientRect();
+        if (r.top < window.innerHeight - 80) el.classList.add('show');
+      });
+    };
+    window.addEventListener('scroll', onScroll);
+    window.addEventListener('load', onScroll);
+
+    // Gestion authentification
+    const authModal = document.getElementById('authModal');
+    const authTitle = document.getElementById('authTitle');
+    const authSwitch = document.getElementById('authSwitch');
+    const signupFields = document.getElementById('signupFields');
+    const btnLogin = document.getElementById('btnLogin');
+    const btnSignup = document.getElementById('btnSignup');
+    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const authSubmitText = document.getElementById('authSubmitText');
+    const authSubmitLoader = document.getElementById('authSubmitLoader');
+    
+    let mode = 'login';
+
+    btnLogin.addEventListener('click', () => openAuth('login'));
+    btnSignup.addEventListener('click', () => openAuth('signup'));
+
+    // Ouvre la modale directement (CTA gratuit)
+    function goFree() {
+      openAuth('signup');
+      setTimeout(() => { authModal.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);
+    }
+    
+    function openAuth(m) {
+      mode = m;
+      toggleAuth(true);
+      
+      if (m === 'signup') {
+        authTitle.textContent = 'Inscription';
+        signupFields.classList.remove('hidden');
+        document.getElementById('forgotPasswordLink').classList.add('hidden');
+        authSwitch.innerHTML = 'Déjà un compte ? <a href="#" class="underline text-blue-600" onclick="openAuth(\'login\'); return false;">Se connecter</a>';
+      } else {
+        authTitle.textContent = 'Connexion';
+        signupFields.classList.add('hidden');
+        document.getElementById('forgotPasswordLink').classList.remove('hidden');
+        authSwitch.innerHTML = 'Nouveau ? <a href="#" class="underline text-blue-600" onclick="openAuth(\'signup\'); return false;">Créer un compte</a>';
+      }
+    }
+    
+    function toggleAuth(open) {
+      authModal.classList.toggle('active', !!open);
+    }
+    
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const email = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPass').value.trim();
+      
+      if (!email || !password) {
+        alert('Veuillez remplir email et mot de passe');
+        return;
+      }
+      
+      // Désactiver le bouton
+      authSubmitBtn.disabled = true;
+      authSubmitText.classList.add('hidden');
+      authSubmitLoader.classList.remove('hidden');
+      
+      try {
+        if (mode === 'signup') {
+          const restaurant = document.getElementById('authRestaurant').value.trim();
+          const firstName = document.getElementById('authFirstName').value.trim();
+          const lastName = document.getElementById('authLastName').value.trim();
+          const siret = document.getElementById('authSIRET').value.trim();
+          const phone = document.getElementById('authPhone').value.trim();
+          
+          if (!restaurant || !firstName || !lastName || !siret || !phone) {
+            alert('Veuillez remplir tous les champs');
+            authSubmitBtn.disabled = false;
+            authSubmitText.classList.remove('hidden');
+            authSubmitLoader.classList.add('hidden');
+            return;
+          }
+          
+          if (!/^\d{14}$/.test(siret)) {
+            alert('Le SIRET doit contenir exactement 14 chiffres');
+            authSubmitBtn.disabled = false;
+            authSubmitText.classList.remove('hidden');
+            authSubmitLoader.classList.add('hidden');
+            return;
+          }
+
+          // MODE INSCRIPTION avec Firebase
+          try {
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            console.log('✅ Compte créé:', userCredential.user.email);
+            
+            // Sauvegarder les infos supplémentaires dans localStorage
+            localStorage.setItem('olynor_user', JSON.stringify({
+              email: userCredential.user.email,
+              uid: userCredential.user.uid,
+              restaurant: restaurant,
+              firstName: firstName,
+              lastName: lastName,
+              siret: siret,
+              phone: phone,
+              plan: 'free'
+            }));
+            
+            console.log('✅ Compte créé ! Redirection...');
+            toggleAuth(false);
+            
+            // ✅ REDIRECTION IMMÉDIATE VERS DASHBOARD.HTML
+            window.location.href = window.location.origin + '/dashboard.html';
+            
+          } catch (firebaseError) {
+            console.error('Erreur Firebase:', firebaseError);
+            let errorMsg = 'Erreur lors de la création du compte';
+            
+            if (firebaseError.code === 'auth/email-already-in-use') {
+              errorMsg = 'Cet email est déjà utilisé';
+            } else if (firebaseError.code === 'auth/weak-password') {
+              errorMsg = 'Le mot de passe doit contenir au moins 6 caractères';
+            } else if (firebaseError.code === 'auth/invalid-email') {
+              errorMsg = 'Email invalide';
+            }
+            
+            alert('❌ ' + errorMsg);
+          }
+        } else {
+          // MODE CONNECTION avec Firebase
+          try {
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            console.log('✅ Connexion réussie:', userCredential.user.email);
+            
+            // Sauvegarder l'utilisateur
+            localStorage.setItem('olynor_user_email', userCredential.user.email);
+            localStorage.setItem('olynor_user_uid', userCredential.user.uid);
+            
+            console.log('✅ Connexion réussie ! Redirection...');
+            toggleAuth(false);
+            
+            // ✅ REDIRECTION IMMÉDIATE VERS DASHBOARD.HTML
+            window.location.href = window.location.origin + '/dashboard.html';
+            
+          } catch (firebaseError) {
+            console.error('Erreur Firebase:', firebaseError);
+            alert('❌ Erreur de connexion: ' + (firebaseError.message || 'Email ou mot de passe incorrect'));
+          }
+        }
+      } catch (error) {
+        console.error('Erreur:', error);
+        alert(error.message || 'Erreur de connexion au serveur. Vérifiez que le backend est démarré sur http://localhost:3000');
+      } finally {
+        authSubmitBtn.disabled = false;
+        authSubmitText.classList.remove('hidden');
+        authSubmitLoader.classList.add('hidden');
+      }
+    });
+
+    // Liens Stripe (paiements) — redirection directe
+    const STRIPE_LINKS = {
+      pro: 'https://buy.stripe.com/7sY8wP7Q775v9RLdqy2kw00',
+      premium: 'https://buy.stripe.com/cNi14ndar2Pfgg95Y62kw01'
+    };
+    
+    function ensureAccount(plan) {
+      // Offre gratuite : ouvre inscription (modale)
+      openAuth('signup');
+    }
+    
+    function buyPlan(plan) {
+      // Redirection directe vers Stripe (sans exiger d'être connecté)
+      window.location.href = STRIPE_LINKS[plan];
+    }
+
+    // ✅ FONCTION MOT DE PASSE OUBLIÉ
+    function openForgotPassword() {
+      const email = document.getElementById('authEmail').value.trim();
+      
+      if (!email) {
+        alert('⚠️ Veuillez entrer votre email dans le champ ci-dessus');
+        return;
+      }
+
+      if (confirm(`📧 Envoyer un email de réinitialisation à ${email} ?`)) {
+        auth.sendPasswordResetEmail(email)
+          .then(() => {
+            alert('✅ Email envoyé ! Vérifiez votre boîte de réception.');
+            toggleAuth(false);
+          })
+          .catch((error) => {
+            console.error('Erreur:', error);
+            let errorMsg = 'Erreur lors de l\'envoi de l\'email';
+            
+            if (error.code === 'auth/user-not-found') {
+              errorMsg = 'Aucun compte trouvé avec cet email';
+            } else if (error.code === 'auth/invalid-email') {
+              errorMsg = 'Email invalide';
+            }
+            
+            alert('❌ ' + errorMsg);
+          });
+      }
+    }
+
+    // 🤖 FONCTIONS CHATBOT
+    let chatOpen = false;
+
+    function toggleChat() {
+      const chatWindow = document.getElementById('chat-window');
+      const chatIcon = document.getElementById('chat-icon');
+      
+      chatOpen = !chatOpen;
+      chatWindow.classList.toggle('hidden', !chatOpen);
+      
+      if (chatOpen) {
+        chatIcon.textContent = '✕';
+        document.getElementById('chat-input').focus();
+      } else {
+        chatIcon.textContent = '💬';
+      }
+    }
+
+    function handleChatInput(event) {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      // Ajouter le message de l'utilisateur
+      addMessage(message, 'user');
+      input.value = '';
+      
+      // Simulation de typing
+      showTypingIndicator();
+      
+      // Réponse du bot après un délai
+      setTimeout(() => {
+        removeTypingIndicator();
+        const response = getBotResponse(message);
+        addMessage(response, 'bot');
+      }, 1000 + Math.random() * 1000);
+    }
+
+    function addMessage(text, sender) {
+      const messagesContainer = document.getElementById('chat-messages');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chatbot-msg ${sender}-msg`;
+      messageDiv.textContent = text;
+      messagesContainer.appendChild(messageDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      const messagesContainer = document.getElementById('chat-messages');
+      const typingDiv = document.createElement('div');
+      typingDiv.id = 'typing-indicator';
+      typingDiv.className = 'bot-msg chatbot-msg';
+      typingDiv.innerHTML = `
+        <div class="flex items-center gap-1">
+          <span>Assistant écrit</span>
+          <div class="chat-typing"></div>
+          <div class="chat-typing" style="animation-delay: 0.2s"></div>
+          <div class="chat-typing" style="animation-delay: 0.4s"></div>
+        </div>
+      `;
+      messagesContainer.appendChild(typingDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+      const typingIndicator = document.getElementById('typing-indicator');
+      if (typingIndicator) {
+        typingIndicator.remove();
+      }
+    }
+
+    function getBotResponse(message) {
+      const lowerMessage = message.toLowerCase();
+      
+      // Réponses prédéfinies
+      if (lowerMessage.includes('bonjour') || lowerMessage.includes('salut') || lowerMessage.includes('hello')) {
+        return 'Bonjour ! 👋 Comment puis-je vous aider aujourd\'hui ?';
+      }
+      
+      if (lowerMessage.includes('prix') || lowerMessage.includes('tarif') || lowerMessage.includes('combien')) {
+        return 'Nous avons 3 formules :\n• Gratuit : 3 plats\n• Pro : 49€/mois (20 plats)\n• Premium : 99€/mois (illimité)\nDétails dans la section "Tarifs" !';
+      }
+      
+      if (lowerMessage.includes('fonctionnement') || lowerMessage.includes('comment ça marche')) {
+        return '1. Vous ajoutez vos plats avec photos\n2. Génération automatique des modèles 3D\n3. QR code pour vos clients\n4. Ils visualisent en AR sur mobile !';
+      }
+      
+      if (lowerMessage.includes('gratuit') || lowerMessage.includes('free')) {
+        return 'L\'offre gratuite inclut : 3 plats maximum, QR code global, pas de CB requise. Parfait pour tester !';
+      }
+      
+      if (lowerMessage.includes('pro') || lowerMessage.includes('49')) {
+        return 'Le plan Pro (49€/mois) : 20 plats, statistiques basiques, support email. Idéal pour les restaurants établis.';
+      }
+      
+      if (lowerMessage.includes('premium') || lowerMessage.includes('99')) {
+        return 'Le plan Premium (99€/mois) : plats illimités, statistiques avancées, A/B testing, support prioritaire. Pour les professionnels exigeants.';
+      }
+      
+      if (lowerMessage.includes('contact') || lowerMessage.includes('email') || lowerMessage.includes('support')) {
+        return 'Contactez-nous à : Elvoraapp@gmail.com\nNous répondons sous 24h !';
+      }
+      
+      if (lowerMessage.includes('3d') || lowerMessage.includes('réalité augmentée') || lowerMessage.includes('ar')) {
+        return 'La 3D/AR permet à vos clients de visualiser les plats en taille réelle sur leur table via leur smartphone. Aucune app à télécharger !';
+      }
+      
+      if (lowerMessage.includes('qr') || lowerMessage.includes('code')) {
+        return 'Vous générez un QR code unique pour votre menu. Les clients scannent et voient directement vos plats en 3D. Simple et efficace !';
+      }
+      
+      if (lowerMessage.includes('merci') || lowerMessage.includes('thanks')) {
+        return 'Avec plaisir ! 😊 N\'hésitez pas si vous avez d\'autres questions.';
+      }
+      
+      // Réponse par défaut
+      return 'Je comprends que vous demandez : "' + message + '". Pourriez-vous reformuler ? Sinon, posez-moi une question sur nos tarifs, le fonctionnement, ou contactez-nous à Elvoraapp@gmail.com pour une assistance personnalisée !';
+    }
+  </script>
+</body>
+</html>

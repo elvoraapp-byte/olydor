@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Olynor - Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
+      background:#f8fafc 
+    }
+    .sidebar { 
+      width:260px; background:#111827; color:#f9fafb; height:100vh; 
+      position:fixed; inset:0 auto 0 0; display:flex; flex-direction:column 
+    }
+    .sidebar a { 
+      padding:12px 16px; display:block; color:#d1d5db; border-radius:8px; 
+      margin:4px; text-decoration:none 
+    }
+    .sidebar a:hover { background:#1f2937; color:#fff }
+    .sidebar a.active { background:#2563eb; color:#fff }
+    .sidebar .logo { 
+      font-size:22px; font-weight:700; text-align:center; padding:20px 0; 
+      border-bottom:1px solid #374151 
+    }
+    main { margin-left:260px; padding:20px }
+    .card { 
+      background:#fff; border:1px solid #e5e7eb; border-radius:12px; 
+      box-shadow:0 1px 2px rgba(0,0,0,.04); padding:16px 
+    }
+    .btn { cursor:pointer; font-weight:600 }
+    .btn-primary { background:#2563eb; color:#fff }
+    .btn-danger { background:#dc2626; color:#fff }
+    .btn-secondary { background:#6b7280; color:#fff }
+    .btn-warning { background:#f59e0b; color:#fff }
+    .photo-thumb { 
+      width:80px; height:80px; object-fit:cover; border-radius:8px; 
+      margin:4px; border:2px solid #e5e7eb 
+    }
+    .dish-card { min-height: 200px; display: flex; flex-direction: column }
+    .dish-image { height: 180px; object-fit: cover; width: 100% }
+    .model-container { height: 300px; position: relative }
+    .plan-badge-free { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0 }
+    .plan-badge-pro { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe }
+    .plan-badge-premium { background: #fae8ff; color: #86198f; border: 1px solid #f0abfc }
+    .modal { 
+      position:fixed; inset:0; background:rgba(0,0,0,.5); 
+      display:none; align-items:center; justify-content:center; z-index:50 
+    }
+    .modal.active { display:flex }
+    @media (max-width: 1024px) { 
+      main { margin-left:0 } 
+      .sidebar { position:relative; height:auto } 
+    }
+  </style>
+</head>
+<body>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">🍽️ Olynor</div>
+    <a href="#" onclick="showSection('dishes')" id="navDishes" class="active">🍽️ Mes plats</a>
+    <a href="#" onclick="showSection('qrcode')" id="navQR">📱 QR Menu</a>
+    <a href="#" onclick="showSection('stats')" id="navStats">📊 Statistiques</a>
+    <a href="#" onclick="showSection('settings')" id="navSettings">⚙️ Paramètres</a>
+    <div class="mt-auto p-4 text-sm text-gray-300 border-t border-white/10">
+      Plan : <span id="uiPlan" class="font-semibold">free</span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="space-y-8">
+    <!-- Mes plats -->
+    <section id="sec-dishes">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 class="text-2xl md:text-3xl font-bold text-slate-900">🍽️ Mes plats</h1>
+          <p class="text-slate-600">Gérez vos plats et générez leurs versions 3D</p>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="openDishModal()" class="btn btn-primary px-4 py-2 rounded-lg">+ Ajouter un plat</button>
+          <button onclick="deleteAllDishes()" class="btn btn-warning px-4 py-2 rounded-lg">🗑️ Tout supprimer</button>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-4 mt-4">
+        <div class="card">
+          <div class="text-slate-500 text-sm">Plats publiés</div>
+          <div id="metricTotalDishes" class="text-3xl font-extrabold">0</div>
+          <div id="metricLimit" class="text-sm text-slate-500"></div>
+        </div>
+        <div class="card">
+          <div class="text-slate-500 text-sm">Plats 3D prêts</div>
+          <div id="metricReady3D" class="text-3xl font-extrabold">0</div>
+        </div>
+        <div class="card">
+          <div class="text-slate-500 text-sm">Sélectionnés (QR)</div>
+          <div id="metricSelected" class="text-3xl font-extrabold">0</div>
+        </div>
+        <div class="card">
+          <div class="text-slate-500 text-sm">Plan actif</div>
+          <div id="metricPlan" class="text-xl font-bold plan-badge-free px-3 py-1 rounded-full">free</div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold">Liste des plats</h2>
+          <div class="flex gap-3">
+            <input onkeyup="filterDishes(this.value)" placeholder="🔍 Rechercher un plat..." class="px-3 py-2 border rounded-lg w-64" />
+            <select onchange="sortDishes(this.value)" class="px-3 py-2 border rounded-lg">
+              <option value="name">Trier par nom</option>
+              <option value="price">Trier par prix</option>
+              <option value="date">Trier par date</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Indicateur de pagination (visible seulement pour Premium) -->
+        <div id="paginationInfo" class="hidden mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div class="flex items-center justify-between">
+            <span id="pageInfo" class="text-sm text-blue-800"></span>
+            <div id="pagination" class="flex gap-2"></div>
+          </div>
+        </div>
+        
+        <div id="dishesList" class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+        
+        <div id="emptyState" class="hidden text-center py-12">
+          <div class="text-6xl mb-2">🍽️</div>
+          <div class="text-xl font-bold">Aucun plat</div>
+          <p class="text-slate-600">Ajoutez votre premier plat pour générer sa version 3D</p>
+          <button class="btn btn-primary mt-4 px-4 py-2 rounded-lg" onclick="openDishModal()">+ Ajouter</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- QR MENU -->
+    <section id="sec-qrcode" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-xl font-bold mb-2">📱 QR code — Menu du restaurant</h2>
+        <p class="text-slate-600 mb-4">Les clients scannent pour voir les plats 3D sélectionnés.</p>
+        <div class="grid md:grid-cols-2 gap-6 items-center">
+          <div class="text-center">
+            <img id="qrImg" alt="QR Menu" class="w-56 h-56 border rounded-xl mx-auto" />
+          </div>
+          <div>
+            <div class="mb-2 text-sm text-slate-500">URL de votre menu :</div>
+            <div id="qrUrl" class="p-3 border rounded-lg text-sm break-all bg-slate-50 font-mono"></div>
+            <div class="text-sm text-slate-500 mt-4">
+              Plats inclus : <span id="qrCount" class="font-semibold">0</span>
+            </div>
+            <div class="mt-4 flex gap-3">
+              <button class="btn btn-secondary px-3 py-2 rounded-lg" onclick="rebuildQR()">🔄 Régénérer</button>
+              <button class="btn btn-primary px-3 py-2 rounded-lg" onclick="copyQRUrl()">📋 Copier l'URL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATISTIQUES -->
+    <section id="sec-stats" class="hidden space-y-6">
+      <!-- FREE PLAN -->
+      <div id="statsLocked" class="card">
+        <h2 class="text-xl font-bold mb-2">🔒 Statistiques</h2>
+        <p class="text-slate-600">
+          Les statistiques sont réservées aux plans <b>Pro</b> et <b>Premium</b>.
+          <br>Passez à l'offre Pro pour suivre vos performances.
+        </p>
+        <button class="btn btn-primary mt-4 px-4 py-2 rounded-lg" onclick="showSection('settings')">
+          📊 Voir les offres
+        </button>
+      </div>
+
+      <!-- PRO PLAN -->
+      <div id="statsPro" class="card hidden">
+        <h2 class="text-xl font-bold mb-4">📊 Statistiques Pro</h2>
+        <div class="grid md:grid-cols-3 gap-4 mb-6">
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Total scans QR</div>
+            <div id="proTotalScans" class="text-3xl font-extrabold">1,247</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Plat le plus vu</div>
+            <div id="proTopDish" class="text-lg font-bold">Burger Maison</div>
+            <div class="text-sm text-slate-500">156 vues</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Taux conversion</div>
+            <div id="proConversion" class="text-3xl font-extrabold">68%</div>
+          </div>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="card">
+            <h3 class="font-bold mb-3">📈 Scans des 7 derniers jours</h3>
+            <canvas id="chartProWeekly" style="height: 200px"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="font-bold mb-3">🍽️ Top 3 plats</h3>
+            <canvas id="chartProTop3" style="height: 200px"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- PREMIUM PLAN -->
+      <div id="statsPremium" class="card hidden">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <h2 class="text-xl font-bold">📈 Statistiques Premium</h2>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary px-3 py-2 rounded-lg" onclick="setRange('7')">7 jours</button>
+            <button class="btn btn-secondary px-3 py-2 rounded-lg" onclick="setRange('30')">30 jours</button>
+            <button class="btn btn-primary px-3 py-2 rounded-lg" onclick="exportCSV()">📥 Exporter CSV</button>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-4 gap-4 mb-6">
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Scans QR (7j)</div>
+            <div id="premiumWeeklyScans" class="text-2xl font-extrabold">347</div>
+            <div class="text-xs text-green-600">↑ 12%</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Temps moyen</div>
+            <div id="premiumAvgTime" class="text-2xl font-extrabold">45s</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Top plat</div>
+            <div id="premiumTopDish" class="text-lg font-bold">Pizza Royale</div>
+            <div class="text-sm text-slate-500">89 vues</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-slate-500 text-sm">Taux conversion</div>
+            <div id="premiumConversion" class="text-2xl font-extrabold">72%</div>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+          <div class="card">
+            <h3 class="font-bold mb-3">📈 Évolution des scans</h3>
+            <canvas id="chartViews" style="height: 250px"></canvas>
+          </div>
+          <div class="card">
+            <h3 class="font-bold mb-3">🍽️ Top 5 plats</h3>
+            <canvas id="chartTop" style="height: 250px"></canvas>
+          </div>
+        </div>
+
+        <div class="card mt-6">
+          <h3 class="font-bold mb-3">📋 Performance détaillée par plat</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Plat</th>
+                  <th class="text-right py-2">Vues 3D</th>
+                  <th class="text-right py-2">Temps moyen</th>
+                  <th class="text-right py-2">Conversion</th>
+                </tr>
+              </thead>
+              <tbody id="premiumDishTable">
+                <tr class="border-b">
+                  <td class="py-2">Burger Maison</td>
+                  <td class="text-right py-2">156</td>
+                  <td class="text-right py-2">52s</td>
+                  <td class="text-right py-2">78%</td>
+                </tr>
+                <tr class="border-b">
+                  <td class="py-2">Pizza Royale</td>
+                  <td class="text-right py-2">142</td>
+                  <td class="text-right py-2">48s</td>
+                  <td class="text-right py-2">72%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARAMÈTRES -->
+    <section id="sec-settings" class="hidden space-y-6">
+      <div class="card">
+        <h2 class="text-xl font-bold mb-4">⚙️ Paramètres du restaurant</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Nom du restaurant</label>
+            <input id="restaurantName" class="w-full px-3 py-2 border rounded-lg" placeholder="Ex: Bistro & Co" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Plan actuel</label>
+            <div id="planDisplay" class="px-3 py-2 border rounded-lg bg-gray-50">
+              <span id="currentPlanDisplay" class="font-semibold">Free</span>
+              <div class="mt-2" id="cancelSubscriptionSection">
+                <!-- Section annulation visible seulement pour Pro et Premium -->
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-6">
+          <button class="btn btn-primary px-4 py-2 rounded-lg" onclick="saveSettings()">
+            💾 Enregistrer les modifications
+          </button>
+        </div>
+      </div>
+
+      <!-- GESTION ABONNEMENT -->
+      <div class="card">
+        <h3 class="text-lg font-bold mb-4">💰 Gestion de l'abonnement</h3>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="border rounded-lg p-4 text-center">
+            <div class="font-bold">Gratuit</div>
+            <div class="text-2xl font-extrabold my-2">0€</div>
+            <div class="text-sm text-slate-600 mb-2">3 plats max</div>
+            <button class="btn btn-secondary w-full mt-3 px-3 py-2 rounded-lg" disabled>
+              Actuel
+            </button>
+          </div>
+          <div class="border-2 border-blue-500 rounded-lg p-4 text-center">
+            <div class="font-bold">Pro</div>
+            <div class="text-2xl font-extrabold my-2">49€/mois</div>
+            <div class="text-sm text-slate-600 mb-2">20 plats max</div>
+            <button class="btn btn-primary w-full mt-3 px-3 py-2 rounded-lg" 
+                    onclick="upgradeToPlan('pro')">
+              Choisir Pro
+            </button>
+          </div>
+          <div class="border rounded-lg p-4 text-center">
+            <div class="font-bold">Premium</div>
+            <div class="text-2xl font-extrabold my-2">99€/mois</div>
+            <div class="text-sm text-slate-600 mb-2">60 plats max</div>
+            <button class="btn btn-primary w-full mt-3 px-3 py-2 rounded-lg" 
+                    onclick="upgradeToPlan('premium')">
+              Choisir Premium
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODALE D'AJOUT DE PLAT -->
+  <div id="dishModal" class="modal">
+    <div class="bg-white rounded-2xl max-w-2xl w-full mx-4 overflow-hidden">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="text-xl font-bold">Ajouter un plat</h3>
+        <button class="text-2xl text-slate-500" onclick="closeDishModal()">×</button>
+      </div>
+      <form class="p-5 space-y-5" onsubmit="saveDish(event)">
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Nom *</label>
+            <input id="dishName" required class="w-full px-3 py-2 border rounded-lg" placeholder="Ex: Burger Maison" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600 mb-1">Prix (€) *</label>
+            <input id="dishPrice" type="number" step="0.01" required class="w-full px-3 py-2 border rounded-lg" placeholder="Ex: 14.90" />
+          </div>
+        </div>
+        <div>
+            <label class="block text-sm text-slate-600 mb-1">Description</label>
+            <textarea id="dishDesc" rows="3" class="w-full px-3 py-2 border rounded-lg" placeholder="Ingrédients, particularités..."></textarea>
+        </div>
+        <div>
+            <label class="block text-sm text-slate-600 mb-1">Photos *</label>
+            <div class="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50" 
+                 onclick="document.getElementById('photoInput').click()">
+            📸 Cliquez pour ajouter des photos (max 5)
+            </div>
+            <input id="photoInput" type="file" multiple accept="image/*" class="hidden" onchange="handlePhotos(event)" />
+            <div id="photoPreview" class="flex flex-wrap mt-3"></div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            🤖 Génération 3D automatique après enregistrement
+        </div>
+        <div class="flex gap-3 pt-2">
+            <button class="btn btn-primary flex-1 px-4 py-2 rounded-lg">💾 Enregistrer & générer 3D</button>
+            <button type="button" class="btn btn-secondary px-4 py-2 rounded-lg" onclick="closeDishModal()">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    /* -------------------- CONFIG -------------------- */
+    const API_URL = window.location.origin;
+
+    /* -------------------- STATE -------------------- */
+    let dishes = JSON.parse(localStorage.getItem('olynor_dishes') || '[]');
+    let selectedPhotos = [];
+    const userId = localStorage.getItem('olynor_user_uid');
+    if (!userId) { window.location.href = 'index.html'; }
+    let user = JSON.parse(localStorage.getItem('olynor_user') || '{}');
+    if (!user.restaurant) user = { restaurant: 'Mon Restaurant', plan: 'free' };
+
+    // Variables pour la pagination et tri
+    let currentPage = 1;
+    const itemsPerPage = 20; // 3 pages de 20 plats pour Premium
+    let currentSort = 'name';
+    let currentFilter = '';
+
+    /* -------------------- HELPERS -------------------- */
+    const byId = (id) => document.getElementById(id);
+    const uid = () => 'd_' + Math.random().toString(36).slice(2,10);
+    const escapeHtml = (s) => String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+    /* -------------------- INIT -------------------- */
+    window.addEventListener('load', () => {
+      if (!user.restaurant) user = { restaurant: 'Mon Restaurant', plan: 'free' };
+      byId('restaurantName').value = user.restaurant;
+      byId('currentPlanDisplay').textContent = user.plan.charAt(0).toUpperCase() + user.plan.slice(1);
+      refreshAll();
+      showSection('dishes');
+    });
+
+    function refreshAll() {
+      localStorage.setItem('olynor_user', JSON.stringify(user));
+      
+      // Mettre à jour l'affichage du plan
+      byId('metricPlan').textContent = user.plan;
+      byId('metricPlan').className = `text-xl font-bold px-3 py-1 rounded-full plan-badge-${user.plan}`;
+      byId('uiPlan').textContent = user.plan;
+      byId('currentPlanDisplay').textContent = user.plan.charAt(0).toUpperCase() + user.plan.slice(1);
+      
+      // Mettre à jour la section annulation
+      updateCancelSubscriptionSection();
+      
+      // Mettre à jour les limites
+      updatePlanLimits();
+      
+      renderDishesWithPagination();
+      buildQR();
+      setupStatsVisibility();
+      computeProStats();
+      buildPremiumCharts();
+    }
+
+    function updatePlanLimits() {
+      const plan = user.plan || 'free';
+      const limits = { free: 3, pro: 20, premium: 60 };
+      const current = dishes.length;
+      const max = limits[plan];
+      
+      byId('metricLimit').innerHTML = `${current}/${max} plats`;
+      
+      if (current >= max) {
+        byId('metricLimit').className = 'text-sm text-red-600 font-semibold';
+      } else if (current >= max * 0.8) {
+        byId('metricLimit').className = 'text-sm text-orange-600';
+      } else {
+        byId('metricLimit').className = 'text-sm text-green-600';
+      }
+    }
+
+    /* -------------------- GESTION ANNULATION ABONNEMENT -------------------- */
+    function updateCancelSubscriptionSection() {
+      const plan = user.plan || 'free';
+      const cancelSection = byId('cancelSubscriptionSection');
+      
+      if (plan === 'free') {
+        cancelSection.innerHTML = '';
+        return;
+      }
+      
+      cancelSection.innerHTML = `
+        <button onclick="cancelSubscription()" class="btn btn-danger w-full px-3 py-2 rounded-lg text-sm">
+          🚫 Annuler l'abonnement ${plan.toUpperCase()}
+        </button>
+        <p class="text-xs text-slate-500 mt-2 text-center">
+          L'annulation prendra effet à la fin de la période de facturation en cours.
+        </p>
+      `;
+    }
+
+    function cancelSubscription() {
+      const plan = user.plan || 'free';
+      
+      if (plan === 'free') {
+        alert('❌ Vous n\'avez pas d\'abonnement actif.');
+        return;
+      }
+      
+      if (confirm(`Êtes-vous sûr de vouloir annuler votre abonnement ${plan.toUpperCase()} ?\n\nCette action est irréversible et vous perdrez l'accès aux fonctionnalités ${plan.toUpperCase()}.`)) {
+        // Simulation d'annulation
+        user.plan = 'free';
+        localStorage.setItem('olynor_user', JSON.stringify(user));
+        
+        // Vérifier si on dépasse la limite free
+        const freeLimit = 3;
+        if (dishes.length > freeLimit) {
+          const toRemove = dishes.length - freeLimit;
+          dishes = dishes.slice(0, freeLimit);
+          localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+          
+          alert(`✅ Abonnement annulé !\n\nVotre compte a été rétrogradé au plan Gratuit.\n\n⚠️ ${toRemove} plat(s) ont été désactivés pour respecter la limite de 3 plats du plan Gratuit.`);
+        } else {
+          alert('✅ Abonnement annulé ! Votre compte a été rétrogradé au plan Gratuit.');
+        }
+        
+        refreshAll();
+        updateCancelSubscriptionSection();
+      }
+    }
+
+    function upgradeToPlan(plan) {
+      if (user.plan === plan) {
+        alert(`ℹ️ Vous êtes déjà sur le plan ${plan.toUpperCase()}.`);
+        return;
+      }
+      
+      if (confirm(`Passer au plan ${plan.toUpperCase()} ?\n\nPrix : ${plan === 'pro' ? '49€/mois' : '99€/mois'}\n\nVous serez redirigé vers la page de paiement.`)) {
+        const stripeLinks = {
+          pro: 'https://buy.stripe.com/7sY8wP7Q775v9RLdqy2kw00',
+          premium: 'https://buy.stripe.com/cNi14ndar2Pfgg95Y62kw01'
+        };
+        window.location.href = stripeLinks[plan];
+      }
+    }
+
+    /* -------------------- NAVIGATION -------------------- */
+    function showSection(key) {
+      ['dishes','qrcode','stats','settings'].forEach(k => {
+        byId('sec-'+k).classList.toggle('hidden', k !== key);
+      });
+      document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+      byId('nav'+key.charAt(0).toUpperCase() + key.slice(1)).classList.add('active');
+    }
+
+    /* -------------------- GESTION DES PLATS AVEC PAGINATION INTELLIGENTE -------------------- */
+    function openDishModal() {
+      const plan = user.plan || 'free';
+      const limits = { free: 3, pro: 20, premium: 60 };
+      const maxDishes = limits[plan];
+      
+      if (dishes.length >= maxDishes) {
+        alert(`❌ Limite atteinte !
+
+Plan ${plan.toUpperCase()} : Maximum ${maxDishes} plats.
+
+${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre Premium pour 60 plats'}.`);
+        showSection('settings');
+        return;
+      }
+      
+      byId('dishModal').classList.add('active');
+      byId('dishName').value = '';
+      byId('dishPrice').value = '';
+      byId('dishDesc').value = '';
+      selectedPhotos = [];
+      byId('photoPreview').innerHTML = '';
+      byId('dishModal').dataset.editId = '';
+    }
+
+    function closeDishModal() { 
+      byId('dishModal').classList.remove('active'); 
+    }
+
+    function handlePhotos(e) {
+      const files = Array.from(e.target.files).slice(0, 5);
+      selectedPhotos = []; 
+      const prev = byId('photoPreview'); 
+      prev.innerHTML = '';
+      
+      files.forEach(f => {
+        const r = new FileReader();
+        r.onload = ev => {
+          selectedPhotos.push(ev.target.result);
+          const img = document.createElement('img');
+          img.src = ev.target.result; 
+          img.className = 'photo-thumb'; 
+          prev.appendChild(img);
+        };
+        r.readAsDataURL(f);
+      });
+    }
+
+    async function saveDish(e) {
+      e.preventDefault();
+      const name = byId('dishName').value.trim();
+      const price = parseFloat(byId('dishPrice').value || '0').toFixed(2);
+      const desc = byId('dishDesc').value.trim();
+      
+      if (!selectedPhotos.length) { 
+        alert('📸 Ajoutez au moins une photo.'); 
+        return; 
+      }
+
+      // Vérifier à nouveau la limite
+      const plan = user.plan || 'free';
+      const limits = { free: 3, pro: 20, premium: 60 };
+      if (dishes.length >= limits[plan]) {
+        alert(`❌ Limite atteinte ! Maximum ${limits[plan]} plats pour le plan ${plan}.`);
+        return;
+      }
+
+      const dish = { 
+        id: uid(), 
+        name, 
+        price, 
+        description: desc, 
+        photos: selectedPhotos, 
+        status3D: 'processing', 
+        modelUrl: null, 
+        selected: false, 
+        err: null,
+        createdAt: new Date().toISOString()
+      };
+      
+      dishes.push(dish);
+      localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+      renderDishesWithPagination();
+      closeDishModal();
+
+      // Génération 3D
+      try {
+        const res = await fetch(`${API_URL}/generate-3d`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageBase64: selectedPhotos[0].split(',')[1],
+            dishName: name
+          })
+        });
+        
+        const data = await res.json();
+        const i = dishes.findIndex(d => d.id === dish.id);
+        
+        if (!res.ok || !data?.success || !data?.modelUrl) {
+          dishes[i].status3D = 'error';
+          dishes[i].err = data?.error || `Erreur API (${res.status})`;
+        } else {
+          dishes[i].status3D = 'ready';
+          dishes[i].modelUrl = data.modelUrl;
+          dishes[i].err = null;
+        }
+      } catch(err) {
+        const i = dishes.findIndex(d => d.id === dish.id);
+        dishes[i].status3D = 'error';
+        dishes[i].err = err?.message || 'Erreur réseau';
+      }
+      
+      localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+      renderDishesWithPagination();
+    }
+
+    function sortDishes(sortBy) {
+      currentSort = sortBy;
+      renderDishesWithPagination();
+    }
+
+    function filterDishes(filter) {
+      currentFilter = filter;
+      currentPage = 1; // Retour à la page 1 quand on filtre
+      renderDishesWithPagination();
+    }
+
+    function renderDishesWithPagination() {
+      let filtered = dishes.filter(d => d.name.toLowerCase().includes(currentFilter.toLowerCase()));
+      
+      // Trier les plats
+      switch(currentSort) {
+        case 'price':
+          filtered.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+          break;
+        case 'date':
+          filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          break;
+        case 'name':
+        default:
+          filtered.sort((a, b) => a.name.localeCompare(b.name));
+          break;
+      }
+      
+      const plan = user.plan || 'free';
+      
+      // Pagination seulement pour Premium (60 plats)
+      if (plan === 'premium' && filtered.length > itemsPerPage) {
+        const totalPages = Math.ceil(filtered.length / itemsPerPage);
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const paginatedDishes = filtered.slice(startIndex, startIndex + itemsPerPage);
+        
+        renderDishesList(paginatedDishes);
+        renderPagination(totalPages);
+        byId('paginationInfo').classList.remove('hidden');
+        byId('pageInfo').textContent = `Page ${currentPage} sur ${totalPages} - ${filtered.length} plats au total`;
+      } else {
+        // Pas de pagination pour Free et Pro
+        renderDishesList(filtered);
+        byId('paginationInfo').classList.add('hidden');
+        currentPage = 1; // Reset à la page 1
+      }
+      
+      // Métriques
+      byId('metricTotalDishes').textContent = dishes.length;
+      byId('metricReady3D').textContent = dishes.filter(d => d.status3D === 'ready').length;
+      byId('metricSelected').textContent = dishes.filter(d => d.selected).length;
+      
+      updatePlanLimits();
+      injectGenerateMenuCTA();
+    }
+
+    function renderDishesList(dishesToRender) {
+      const wrap = byId('dishesList');
+      const empty = byId('emptyState');
+      
+      if (dishesToRender.length === 0 && dishes.length === 0) {
+        wrap.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      
+      empty.classList.add('hidden');
+      
+      wrap.innerHTML = dishesToRender.map(d => `
+        <div class="card dish-card" data-id="${d.id}">
+          <img src="${d.photos?.[0] || ''}" class="dish-image rounded-lg mb-3" alt="${d.name}"/>
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+              <div class="font-bold text-lg">${d.name}</div>
+              <div class="text-slate-500 text-sm mb-2">${d.price}€</div>
+            </div>
+            <div class="text-right">
+              ${badge(d.status3D)}
+              ${d.err ? `<div class="text-xs text-rose-600 mt-1">${escapeHtml(d.err)}</div>` : ''}
+            </div>
+          </div>
+          
+          ${d.status3D === 'ready' && d.modelUrl ? `
+            <div class="model-container mb-3">
+              <model-viewer 
+                src="${d.modelUrl}"
+                ar
+                ar-modes="scene-viewer quick-look webxr"
+                camera-controls
+                auto-rotate
+                environment-image="neutral"
+                shadow-intensity="1"
+                style="width:100%;height:100%">
+              </model-viewer>
+            </div>
+          ` : ''}
+          
+          <p class="text-sm text-slate-600 mt-2 flex-1">${d.description || ''}</p>
+
+          <div class="flex flex-col gap-2 mt-3">
+            ${d.status3D === 'ready' && d.modelUrl ? `
+              <button onclick="window.open('${d.modelUrl}', '_blank')" class="btn btn-primary px-3 py-2 rounded-lg text-sm w-full">
+                👁️ Voir en 3D
+              </button>
+            ` : ''}
+            <button class="qr-toggle ${d.selected ? 'bg-gray-600' : 'bg-blue-600'} text-white px-3 py-2 rounded-lg text-sm w-full" data-id="${d.id}">
+              ${d.selected ? '⏸️ Retirer du menu' : '➕ Ajouter au menu'}
+            </button>
+            <button class="btn btn-secondary px-3 py-2 rounded-lg text-sm w-full" onclick="editDish('${d.id}')">
+              ✏️ Modifier
+            </button>
+            <button class="btn-delete btn btn-danger px-3 py-2 rounded-lg text-sm w-full" data-id="${d.id}">
+              🗑️ Supprimer
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderPagination(totalPages) {
+      const pagination = byId('pagination');
+      
+      let paginationHTML = `
+        <div class="flex items-center gap-1">
+          <button ${currentPage === 1 ? 'disabled' : ''} 
+                  onclick="changePage(${currentPage - 1})" 
+                  class="px-2 py-1 border rounded text-sm ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
+            ←
+          </button>
+          
+          ${Array.from({length: Math.min(totalPages, 5)}, (_, i) => {
+            const pageNum = i + 1;
+            return `
+              <button onclick="changePage(${pageNum})" 
+                      class="px-2 py-1 border rounded text-sm ${currentPage === pageNum ? 'bg-blue-500 text-white' : 'hover:bg-gray-50'}">
+                ${pageNum}
+              </button>
+            `;
+          }).join('')}
+          
+          ${totalPages > 5 ? `<span class="px-2 text-sm">...</span>` : ''}
+          
+          <button ${currentPage === totalPages ? 'disabled' : ''} 
+                  onclick="changePage(${currentPage + 1})" 
+                  class="px-2 py-1 border rounded text-sm ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}">
+            →
+          </button>
+        </div>
+      `;
+      
+      pagination.innerHTML = paginationHTML;
+    }
+
+    function changePage(page) {
+      currentPage = page;
+      renderDishesWithPagination();
+      // Scroll vers le haut de la liste
+      document.getElementById('dishesList').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function badge(status) {
+      if (status === 'processing') return '<span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full">⏳ Génération…</span>';
+      if (status === 'ready') return '<span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">✓ 3D prêt</span>';
+      if (status === 'error') return '<span class="text-xs px-2 py-1 bg-rose-100 text-rose-800 rounded-full">⚠️ Échec</span>';
+      return '';
+    }
+
+    /* -------------------- FONCTION SUPPRIMER TOUS LES PLATS -------------------- */
+    function deleteAllDishes() {
+      if (dishes.length === 0) {
+        alert('ℹ️ Aucun plat à supprimer.');
+        return;
+      }
+      
+      if (confirm(`🚨 ATTENTION !\n\nVous êtes sur le point de supprimer TOUS vos ${dishes.length} plats.\n\nCette action est irréversible !\n\nConfirmer la suppression ?`)) {
+        dishes = [];
+        localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        renderDishesWithPagination();
+        buildQR();
+        alert('✅ Tous les plats ont été supprimés !');
+      }
+    }
+
+    /* -------------------- GESTION DES ÉVÉNEMENTS -------------------- */
+    document.addEventListener('click', async (e) => {
+      // Suppression
+      const bDel = e.target.closest('.btn-delete');
+      if (bDel) {
+        const id = bDel.dataset.id;
+        if (!confirm('Supprimer ce plat ?')) return;
+        dishes = dishes.filter(d => d.id !== id);
+        localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        renderDishesWithPagination(); 
+        buildQR();
+        return;
+      }
+      
+      // Toggle inclusion QR
+      const bQR = e.target.closest('.qr-toggle');
+      if (bQR) {
+        const id = bQR.dataset.id;
+        const i = dishes.findIndex(d => d.id === id);
+        dishes[i].selected = !dishes[i].selected;
+        localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        renderDishesWithPagination(); 
+        buildQR();
+        return;
+      }
+      
+      // CTA vers QR menu
+      if (e.target.closest('#ctaGenMenu')) {
+        showSection('qrcode'); 
+        return;
+      }
+    });
+
+    /* -------------------- QR MENU -------------------- */
+    function buildQR() {
+      const selected = dishes.filter(d => d.selected && d.status3D === 'ready');
+      const restaurantName = (user.restaurant || 'restaurant')
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      // URL personnalisée
+      const url = `${window.location.origin}/menu.html?restaurant=${restaurantName}`;
+      
+      byId('qrUrl').textContent = url;
+      byId('qrCount').textContent = selected.length;
+      byId('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}`;
+    }
+
+    function rebuildQR() { 
+      buildQR(); 
+      alert('🔄 QR code régénéré !'); 
+    }
+
+    function copyQRUrl() { 
+      const url = byId('qrUrl').textContent;
+      navigator.clipboard.writeText(url); 
+      alert('📋 URL copiée dans le presse-papier !'); 
+    }
+
+    function injectGenerateMenuCTA() {
+      if (byId('ctaGenMenu')) return;
+      const selectedCount = dishes.filter(d => d.selected && d.status3D === 'ready').length;
+      
+      if (selectedCount > 0) {
+        const host = document.querySelector('#sec-dishes');
+        const btn = document.createElement('div');
+        btn.className = 'mt-6';
+        btn.innerHTML = `
+          <button id="ctaGenMenu" class="btn btn-primary w-full px-4 py-3 rounded-lg text-lg">
+            📱 Générer mon menu QR (${selectedCount} plat${selectedCount > 1 ? 's' : ''} sélectionné${selectedCount > 1 ? 's' : ''})
+          </button>
+        `;
+        host.appendChild(btn);
+      }
+    }
+
+    /* -------------------- STATISTIQUES -------------------- */
+    function setupStatsVisibility() {
+      const plan = user.plan || 'free';
+      
+      byId('statsLocked').classList.toggle('hidden', plan !== 'free');
+      byId('statsPro').classList.toggle('hidden', plan !== 'pro');
+      byId('statsPremium').classList.toggle('hidden', plan !== 'premium');
+      
+      // Désactiver la navigation stats si free
+      byId('navStats').classList.toggle('opacity-50', plan === 'free');
+      byId('navStats').classList.toggle('pointer-events-none', plan === 'free');
+    }
+
+    function computeProStats() {
+      // Données simulées pour la démo
+      byId('proTotalScans').textContent = '1,247';
+      byId('proTopDish').textContent = dishes.length > 0 ? dishes[0].name : 'Aucun plat';
+      byId('proConversion').textContent = '68%';
+    }
+
+    let chartViews, chartTop;
+    function buildPremiumCharts(range = '7') {
+      if ((user.plan || 'free') !== 'premium') return;
+      
+      // Données simulées
+      const days = parseInt(range, 10);
+      const labels = [], views = [], topLabels = [], topValues = [];
+      
+      for (let i = days - 1; i >= 0; i--) {
+        labels.push(new Date(Date.now() - i * 86400000).toLocaleDateString('fr-FR'));
+        views.push(10 + Math.floor(Math.random() * 20));
+      }
+      
+      dishes.slice(0, 5).forEach(d => { 
+        topLabels.push(d.name); 
+        topValues.push(5 + Math.floor(Math.random() * 25)); 
+      });
+
+      // Métriques
+      byId('premiumWeeklyScans').textContent = views.reduce((a, b) => a + b, 0);
+      byId('premiumAvgTime').textContent = '45s';
+      byId('premiumTopDish').textContent = dishes.length > 0 ? dishes[0].name : 'Aucun';
+      byId('premiumConversion').textContent = '72%';
+
+      // Graphiques
+      if (window.Chart) {
+        const ctx1 = byId('chartViews').getContext('2d');
+        const ctx2 = byId('chartTop').getContext('2d');
+        
+        if (chartViews) chartViews.destroy(); 
+        if (chartTop) chartTop.destroy();
+        
+        chartViews = new Chart(ctx1, { 
+          type: 'line', 
+          data: { 
+            labels, 
+            datasets: [{ 
+              label: 'Scans QR / jour', 
+              data: views,
+              borderColor: '#2563eb',
+              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+              tension: 0.4
+            }] 
+          }, 
+          options: { 
+            responsive: true, 
+            maintainAspectRatio: false 
+          } 
+        });
+        
+        chartTop = new Chart(ctx2, { 
+          type: 'bar', 
+          data: { 
+            labels: topLabels.length ? topLabels : ['(Aucun plat)'], 
+            datasets: [{ 
+              label: 'Vues modèle 3D', 
+              data: topValues.length ? topValues : [0],
+              backgroundColor: '#60a5fa'
+            }] 
+          }, 
+          options: { 
+            responsive: true, 
+            maintainAspectRatio: false 
+          } 
+        });
+      }
+    }
+
+    function setRange(d) { buildPremiumCharts(d); }
+
+    function exportCSV() {
+      const rows = [['Nom', 'Prix', '3D prêt', 'Sélectionné (QR)', 'Description']];
+      dishes.forEach(d => rows.push([
+        d.name, 
+        d.price + '€', 
+        d.status3D === 'ready' ? 'Oui' : 'Non', 
+        d.selected ? 'Oui' : 'Non', 
+        d.description || ''
+      ]));
+      
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a'); 
+      a.href = URL.createObjectURL(blob); 
+      a.download = 'olynor-plats-' + new Date().toISOString().split('T')[0] + '.csv'; 
+      a.click();
+      
+      alert('📊 CSV exporté avec succès !');
+    }
+
+    /* -------------------- PARAMÈTRES -------------------- */
+    function saveSettings() {
+      user.restaurant = byId('restaurantName').value.trim() || 'Mon Restaurant';
+      localStorage.setItem('olynor_user', JSON.stringify(user));
+      refreshAll();
+      alert('✅ Paramètres enregistrés !');
+    }
+
+    function upgradePlan() {
+      showSection('settings');
+    }
+
+    /* -------------------- EXPORT DES FONCTIONS -------------------- */
+    window.showSection = showSection;
+    window.openDishModal = openDishModal;
+    window.closeDishModal = closeDishModal;
+    window.handlePhotos = handlePhotos;
+    window.saveDish = saveDish;
+    window.filterDishes = filterDishes;
+    window.sortDishes = sortDishes;
+    window.rebuildQR = rebuildQR;
+    window.copyQRUrl = copyQRUrl;
+    window.saveSettings = saveSettings;
+    window.setRange = setRange;
+    window.exportCSV = exportCSV;
+    window.upgradePlan = upgradePlan;
+    window.upgradeToPlan = upgradeToPlan;
+    window.cancelSubscription = cancelSubscription;
+    window.changePage = changePage;
+    window.deleteAllDishes = deleteAllDishes;
+  </script>
+</body>
+</html>
