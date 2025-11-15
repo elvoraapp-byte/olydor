@@ -387,16 +387,15 @@
     const API_URL = window.location.origin;
 
     /* -------------------- STATE -------------------- */
-    let dishes = JSON.parse(localStorage.getItem('olynor_dishes') || '[]');
+    let dishes = [];
     let selectedPhotos = [];
-    const userId = localStorage.getItem('olynor_user_uid');
-    if (!userId) { window.location.href = 'index.html'; }
+    const userId = localStorage.getItem('olynor_user_uid') || 'default';
     let user = JSON.parse(localStorage.getItem('olynor_user') || '{}');
     if (!user.restaurant) user = { restaurant: 'Mon Restaurant', plan: 'free' };
 
     // Variables pour la pagination et tri
     let currentPage = 1;
-    const itemsPerPage = 20; // 3 pages de 20 plats pour Premium
+    const itemsPerPage = 20;
     let currentSort = 'name';
     let currentFilter = '';
 
@@ -405,17 +404,51 @@
     const uid = () => 'd_' + Math.random().toString(36).slice(2,10);
     const escapeHtml = (s) => String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
+    /* -------------------- SAUVEGARDE SERVEUR -------------------- */
+    async function saveDishesToServer() {
+      try {
+        const response = await fetch(`${API_URL}/api/dishes/${userId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dishes: dishes })
+        });
+        const result = await response.json();
+        if (result.success) {
+          console.log('✅ Plats sauvegardés sur le serveur');
+        }
+      } catch (error) {
+        console.error('❌ Erreur sauvegarde serveur:', error);
+      }
+    }
+
+    async function loadDishesFromServer() {
+      try {
+        const response = await fetch(`${API_URL}/api/dishes/${userId}`);
+        const result = await response.json();
+        if (result.success) {
+          dishes = result.dishes || [];
+          console.log('✅ Plats chargés depuis le serveur:', dishes.length);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement serveur:', error);
+        dishes = JSON.parse(localStorage.getItem('olynor_dishes') || '[]');
+      }
+    }
+
     /* -------------------- INIT -------------------- */
-    window.addEventListener('load', () => {
+    window.addEventListener('load', async () => {
       if (!user.restaurant) user = { restaurant: 'Mon Restaurant', plan: 'free' };
       byId('restaurantName').value = user.restaurant;
       byId('currentPlanDisplay').textContent = user.plan.charAt(0).toUpperCase() + user.plan.slice(1);
+      
+      await loadDishesFromServer();
       refreshAll();
       showSection('dishes');
     });
 
     function refreshAll() {
       localStorage.setItem('olynor_user', JSON.stringify(user));
+      localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
       
       // Mettre à jour l'affichage du plan
       byId('metricPlan').textContent = user.plan;
@@ -482,16 +515,15 @@
       }
       
       if (confirm(`Êtes-vous sûr de vouloir annuler votre abonnement ${plan.toUpperCase()} ?\n\nCette action est irréversible et vous perdrez l'accès aux fonctionnalités ${plan.toUpperCase()}.`)) {
-        // Simulation d'annulation
         user.plan = 'free';
         localStorage.setItem('olynor_user', JSON.stringify(user));
         
-        // Vérifier si on dépasse la limite free
         const freeLimit = 3;
         if (dishes.length > freeLimit) {
           const toRemove = dishes.length - freeLimit;
           dishes = dishes.slice(0, freeLimit);
           localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+          saveDishesToServer();
           
           alert(`✅ Abonnement annulé !\n\nVotre compte a été rétrogradé au plan Gratuit.\n\n⚠️ ${toRemove} plat(s) ont été désactivés pour respecter la limite de 3 plats du plan Gratuit.`);
         } else {
@@ -520,25 +552,25 @@
 
     /* -------------------- NAVIGATION -------------------- */
     function showSection(key) {
-      ['dishes','qrcode','stats','settings'].forEach(k => {
-        byId('sec-'+k).classList.toggle('hidden', k !== key);
+      const sections = ['dishes','qrcode','stats','settings'];
+      sections.forEach(k => {
+        const section = byId('sec-'+k);
+        if (section) section.classList.toggle('hidden', k !== key);
       });
+      
       document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
-      byId('nav'+key.charAt(0).toUpperCase() + key.slice(1)).classList.add('active');
+      const navElement = byId('nav'+key.charAt(0).toUpperCase() + key.slice(1));
+      if (navElement) navElement.classList.add('active');
     }
 
-    /* -------------------- GESTION DES PLATS AVEC PAGINATION INTELLIGENTE -------------------- */
+    /* -------------------- GESTION DES PLATS -------------------- */
     function openDishModal() {
       const plan = user.plan || 'free';
       const limits = { free: 3, pro: 20, premium: 60 };
       const maxDishes = limits[plan];
       
       if (dishes.length >= maxDishes) {
-        alert(`❌ Limite atteinte !
-
-Plan ${plan.toUpperCase()} : Maximum ${maxDishes} plats.
-
-${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre Premium pour 60 plats'}.`);
+        alert(`❌ Limite atteinte !\n\nPlan ${plan.toUpperCase()} : Maximum ${maxDishes} plats.\n\n${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre Premium pour 60 plats'}.`);
         showSection('settings');
         return;
       }
@@ -586,7 +618,6 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
         return; 
       }
 
-      // Vérifier à nouveau la limite
       const plan = user.plan || 'free';
       const limits = { free: 3, pro: 20, premium: 60 };
       if (dishes.length >= limits[plan]) {
@@ -609,6 +640,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       
       dishes.push(dish);
       localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+      await saveDishesToServer();
       renderDishesWithPagination();
       closeDishModal();
 
@@ -641,6 +673,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       }
       
       localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+      await saveDishesToServer();
       renderDishesWithPagination();
     }
 
@@ -651,14 +684,13 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
 
     function filterDishes(filter) {
       currentFilter = filter;
-      currentPage = 1; // Retour à la page 1 quand on filtre
+      currentPage = 1;
       renderDishesWithPagination();
     }
 
     function renderDishesWithPagination() {
       let filtered = dishes.filter(d => d.name.toLowerCase().includes(currentFilter.toLowerCase()));
       
-      // Trier les plats
       switch(currentSort) {
         case 'price':
           filtered.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
@@ -674,7 +706,6 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       
       const plan = user.plan || 'free';
       
-      // Pagination seulement pour Premium (60 plats)
       if (plan === 'premium' && filtered.length > itemsPerPage) {
         const totalPages = Math.ceil(filtered.length / itemsPerPage);
         const startIndex = (currentPage - 1) * itemsPerPage;
@@ -685,13 +716,11 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
         byId('paginationInfo').classList.remove('hidden');
         byId('pageInfo').textContent = `Page ${currentPage} sur ${totalPages} - ${filtered.length} plats au total`;
       } else {
-        // Pas de pagination pour Free et Pro
         renderDishesList(filtered);
         byId('paginationInfo').classList.add('hidden');
-        currentPage = 1; // Reset à la page 1
+        currentPage = 1;
       }
       
-      // Métriques
       byId('metricTotalDishes').textContent = dishes.length;
       byId('metricReady3D').textContent = dishes.filter(d => d.status3D === 'ready').length;
       byId('metricSelected').textContent = dishes.filter(d => d.selected).length;
@@ -800,7 +829,6 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
     function changePage(page) {
       currentPage = page;
       renderDishesWithPagination();
-      // Scroll vers le haut de la liste
       document.getElementById('dishesList').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
@@ -811,7 +839,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       return '';
     }
 
-    /* -------------------- FONCTION SUPPRIMER TOUS LES PLATS -------------------- */
+    /* -------------------- SUPPRESSION -------------------- */
     function deleteAllDishes() {
       if (dishes.length === 0) {
         alert('ℹ️ Aucun plat à supprimer.');
@@ -821,6 +849,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       if (confirm(`🚨 ATTENTION !\n\nVous êtes sur le point de supprimer TOUS vos ${dishes.length} plats.\n\nCette action est irréversible !\n\nConfirmer la suppression ?`)) {
         dishes = [];
         localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        saveDishesToServer();
         renderDishesWithPagination();
         buildQR();
         alert('✅ Tous les plats ont été supprimés !');
@@ -836,6 +865,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
         if (!confirm('Supprimer ce plat ?')) return;
         dishes = dishes.filter(d => d.id !== id);
         localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        await saveDishesToServer();
         renderDishesWithPagination(); 
         buildQR();
         return;
@@ -848,6 +878,7 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
         const i = dishes.findIndex(d => d.id === id);
         dishes[i].selected = !dishes[i].selected;
         localStorage.setItem('olynor_dishes', JSON.stringify(dishes));
+        await saveDishesToServer();
         renderDishesWithPagination(); 
         buildQR();
         return;
@@ -863,14 +894,9 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
     /* -------------------- QR MENU -------------------- */
     function buildQR() {
       const selected = dishes.filter(d => d.selected && d.status3D === 'ready');
-      const restaurantName = (user.restaurant || 'restaurant')
-        .toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
       
-      // URL personnalisée
-      const url = `${window.location.origin}/menu.html?restaurant=${restaurantName}`;
+      // URL CORRIGÉE : avec user=id au lieu de restaurant=nom
+      const url = `${window.location.origin}/menu.html?user=${userId}`;
       
       byId('qrUrl').textContent = url;
       byId('qrCount').textContent = selected.length;
@@ -913,13 +939,11 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
       byId('statsPro').classList.toggle('hidden', plan !== 'pro');
       byId('statsPremium').classList.toggle('hidden', plan !== 'premium');
       
-      // Désactiver la navigation stats si free
       byId('navStats').classList.toggle('opacity-50', plan === 'free');
       byId('navStats').classList.toggle('pointer-events-none', plan === 'free');
     }
 
     function computeProStats() {
-      // Données simulées pour la démo
       byId('proTotalScans').textContent = '1,247';
       byId('proTopDish').textContent = dishes.length > 0 ? dishes[0].name : 'Aucun plat';
       byId('proConversion').textContent = '68%';
@@ -929,7 +953,6 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
     function buildPremiumCharts(range = '7') {
       if ((user.plan || 'free') !== 'premium') return;
       
-      // Données simulées
       const days = parseInt(range, 10);
       const labels = [], views = [], topLabels = [], topValues = [];
       
@@ -943,13 +966,11 @@ ${plan === 'free' ? 'Passez à l\'offre Pro pour 20 plats' : 'Passez à l\'offre
         topValues.push(5 + Math.floor(Math.random() * 25)); 
       });
 
-      // Métriques
       byId('premiumWeeklyScans').textContent = views.reduce((a, b) => a + b, 0);
       byId('premiumAvgTime').textContent = '45s';
       byId('premiumTopDish').textContent = dishes.length > 0 ? dishes[0].name : 'Aucun';
       byId('premiumConversion').textContent = '72%';
 
-      // Graphiques
       if (window.Chart) {
         const ctx1 = byId('chartViews').getContext('2d');
         const ctx2 = byId('chartTop').getContext('2d');
