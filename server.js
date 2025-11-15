@@ -1,5 +1,5 @@
 // ====================================================
-//  OLYNOR BACKEND - VERSION FINALE COMPLÈTE
+//  OLYNOR BACKEND - VERSION MESHY.AI
 // ====================================================
 import express from "express";
 import cors from "cors";
@@ -29,7 +29,7 @@ app.get('/dashboard', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const LUMA_API_KEY = process.env.MPX_SDK_BEARER_TOKEN;
+const MESHY_API_KEY = process.env.MESHY_API_KEY;
 
 // Créer les dossiers nécessaires
 const modelsDir = path.join(__dirname, 'models');
@@ -131,7 +131,7 @@ app.post("/api/user/:userId", (req, res) => {
 });
 
 // ====================================================
-// 🤖 GÉNÉRATION 3D AVEC LUMA AI
+// 🤖 GÉNÉRATION 3D AVEC MESHY.AI
 // ====================================================
 app.post("/generate-3d", async (req, res) => {
   const { dishName, imageBase64 } = req.body;
@@ -143,88 +143,69 @@ app.post("/generate-3d", async (req, res) => {
     });
   }
 
-  console.log(`🎯 Génération 3D pour: ${dishName}`);
+  console.log(`🎯 Génération Meshy.ai pour: ${dishName}`);
   
   try {
-    const createResponse = await axios.post(
-      'https://api.lumalabs.ai/dream-machine/v1/generations',
+    // 1. Upload l'image vers Meshy
+    const uploadResponse = await axios.post(
+      'https://api.meshy.ai/v1/image-to-3d',
       {
-        prompt: `High quality 3D model of ${dishName}, restaurant food dish, appetizing presentation, photorealistic`,
-        aspect_ratio: "1:1",
-        keyframes: {
-          frame0: {
-            type: "image",
-            url: `data:image/jpeg;base64,${imageBase64}`
-          }
-        }
+        image_url: `data:image/jpeg;base64,${imageBase64}`,
+        enable_pbr: true,
+        resolution: "high"
       },
       {
         headers: {
-          'Authorization': `Bearer ${LUMA_API_KEY}`,
+          'Authorization': `Bearer ${MESHY_API_KEY}`,
           'Content-Type': 'application/json'
-        },
-        timeout: 30000
+        }
       }
     );
 
-    const generationId = createResponse.data.id;
-    console.log(`✅ Génération créée: ${generationId}`);
+    const taskId = uploadResponse.data.id;
+    console.log(`✅ Task Meshy créée: ${taskId}`);
 
-    // Attendre la génération
-    let status = 'pending';
+    // 2. Attendre la génération
+    let status = 'UNKNOWN';
     let attempts = 0;
     const maxAttempts = 60;
-    let generationData;
 
-    while (!['completed', 'failed'].includes(status) && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
+    while (!['SUCCEEDED', 'FAILED'].includes(status) && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 10000)); // 10 secondes
       
       const statusResponse = await axios.get(
-        `https://api.lumalabs.ai/dream-machine/v1/generations/${generationId}`,
+        `https://api.meshy.ai/v1/image-to-3d/${taskId}`,
         {
-          headers: { 'Authorization': `Bearer ${LUMA_API_KEY}` }
+          headers: { 'Authorization': `Bearer ${MESHY_API_KEY}` }
         }
       );
 
-      generationData = statusResponse.data;
-      status = generationData.state;
+      status = statusResponse.data.status;
       attempts++;
-      console.log(`⏳ Statut (${attempts}/${maxAttempts}): ${status}`);
+      console.log(`⏳ Statut Meshy (${attempts}/${maxAttempts}): ${status}`);
+      
+      if (status === 'SUCCEEDED') {
+        const modelUrl = statusResponse.data.model_urls.glb;
+        console.log(`✅ Modèle Meshy généré: ${modelUrl}`);
+        return res.json({
+          success: true,
+          modelUrl: modelUrl,
+          status: "ready",
+          message: "✅ Modèle 3D généré avec Meshy.ai"
+        });
+      }
     }
 
-    if (status !== 'completed') {
-      throw new Error(`Génération échouée ou timeout`);
-    }
-
-    const assetUrl = generationData.assets?.video || generationData.video?.url;
-    
-    if (!assetUrl) {
-      console.log('⚠️ Pas de GLB, utilisation du modèle de démo');
-      return res.json({
-        success: true,
-        modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-        status: "ready",
-        message: "✅ Modèle 3D de démonstration",
-        generationId: generationId,
-        isDemo: true
-      });
-    }
-
-    res.json({
-      success: true,
-      modelUrl: assetUrl,
-      status: "ready",
-      message: "✅ Modèle généré",
-      generationId: generationId
-    });
+    throw new Error('Timeout génération Meshy.ai');
 
   } catch (error) {
-    console.error('❌ Erreur:', error.message);
-    res.json({
+    console.error('❌ Erreur Meshy.ai:', error.message);
+    // Fallback vers modèle de démo
+    return res.json({
       success: true,
       modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-      status: "ready",
-      message: "⚠️ Modèle de démonstration (erreur API)",
+      status: "ready", 
+      message: "⚠️ Modèle de démonstration",
       isDemo: true
     });
   }
@@ -249,7 +230,7 @@ app.get("/", (req, res) => {
       <div class="status">
         <strong>✅ Serveur opérationnel</strong>
         <p>Port: ${PORT}</p>
-        <p>Luma AI: ${LUMA_API_KEY ? '✅ Connectée' : '❌ Non configurée'}</p>
+        <p>Meshy AI: ${MESHY_API_KEY ? '✅ Connectée' : '❌ Non configurée'}</p>
       </div>
       <h2>📱 Pages</h2>
       <ul>
@@ -268,10 +249,10 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════╗
-║  🚀 OLYNOR BACKEND - VERSION FINALE               ║
+║  🚀 OLYNOR BACKEND - MESHY.AI VERSION            ║
 ╠════════════════════════════════════════════════════╣
 ║  📡 Serveur: http://localhost:${PORT}              ║
-║  🤖 Luma AI: ${LUMA_API_KEY ? '✅ Connectée' : '❌ Non configurée'}           ║
+║  🤖 Meshy AI: ${MESHY_API_KEY ? '✅ Connectée' : '❌ Non configurée'}          ║
 ║  💾 Stockage: Fichiers JSON                       ║
 ║  🎯 Dashboard: http://localhost:${PORT}/dashboard     ║
 ║  📱 Menu AR: http://localhost:${PORT}/menu_html.html  ║
